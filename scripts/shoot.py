@@ -49,6 +49,8 @@ async def main():
             await ev('window.__vce.advance(1/30, 1/30, false)')
             s = await st()
             if s['kills'] >= k0 + 3: break
+        fx = await ev("({screen: document.getElementById('bloodfx').classList.contains('on'), drips: (window.__vce.game.screenBlood||{drips:[]}).drips.length, trainBlood: window.__vce.game.trainBlood})")
+        print('screen fx', fx, flush=True)
         await ev('window.__vce.advance(0.2)')
         await ev("window.__vce.setCam('chase')")
         await shot('02-gore-chase')
@@ -56,7 +58,7 @@ async def main():
         await ev('window.__vce.advance(0.15)')
         await shot('03-gore-orbit')
         s = await st(); print('after gore', s, flush=True)
-        RES['gore'] = {'kills': s['kills'] - k0, 'debris': s['debris'], 'blood': s['blood']}
+        RES['gore'] = {'kills': s['kills'] - k0, 'debris': s['debris'], 'blood': s['blood'], 'screen_fx': fx}
         # 4. replay should auto-trigger
         for i in range(60):
             await ev('window.__vce.advance(0.1, 1/30, false)')
@@ -73,6 +75,22 @@ async def main():
             await ev('window.__vce.advance(0.2, 1/30, false)')
             if not (await st())['replay']: break
         RES['replay']['ended'] = not (await st())['replay']
+
+        # 4b. gore stress: extreme high-speed combo with replays held off, then time the sim with full pools
+        await ev("const g = window.__vce.game; g.replay && g.endReplay(); g.pendingReplay = null; g.replayCooldown = 1e9; g.train.speed = 34; window.__vce.throttle(10)")
+        await ev("['trex','cow','cow','person','cow','alien','cow','person'].forEach((t,i)=>window.__vce.spawn(t, 18 + i*2.2, (i%2?0.5:-0.5)))")
+        k1 = (await st())['kills']
+        for i in range(60):
+            await ev('window.__vce.advance(1/30, 1/30, false)')
+            if (await st())['kills'] >= k1 + 6: break
+        stress = await ev("""(() => { const g = window.__vce.game, G = g.gore; const snap = () => ({debris: G.debris.alive, blood: G.blood.alive, glow: G.glow.alive, decals: Math.min(G.decalN, 16000)});
+          g.pendingReplay = null; const peak = snap(); const t0 = performance.now(); window.__vce.advance(3, 1/60, false); const ms = (performance.now() - t0) / 180;
+          return {peak, after3s: snap(), ms_per_tick_full_pools: +ms.toFixed(2), maxCombo: g.maxCombo, replay: !!g.replay}; })()""")
+        stress['kills'] = (await st())['kills'] - k1
+        print('gore stress', stress, flush=True)
+        await ev("window.__vce.setCam('orbit'); window.__vce.advance(0, 1/30, false)")
+        await shot('09-gore-stress')
+        RES['gore_stress'] = stress
 
         # 5. biomes + crazy stuff
         for biome, spawns in [('desert', ['trex', 'ufo', 'alien', 'alien']), ('snow', ['snowman', 'snowman', 'sheep']), ('alien', ['ufo', 'alien', 'robot', 'alien']), ('town', ['band', 'clown', 'piano', 'duck'])]:

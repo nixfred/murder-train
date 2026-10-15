@@ -11,7 +11,7 @@ import { Target, TYPES, TypeId, TYPE_IDS, BIOME_SPAWNS, Behavior } from './targe
 import { BOX, lin, modelGroup } from './voxels';
 import { mulberry32, clamp, lerp } from './rng';
 import * as M from './models';
-import { Intro } from './intro';
+import { Intro, BloodFX } from './intro';
 
 const params = new URLSearchParams(location.search);
 const SEED = +(params.get('seed') ?? 7);
@@ -25,7 +25,7 @@ const SLOWMO = 0.3;
 
 type CamMode = 'orbit' | 'standing' | 'chase';
 interface Frame { t: number; s: number; speed: number; ids: number[]; d: Float32Array; }
-interface HitEvent { t: number; id: number; x: number; y: number; z: number; ry: number; dx: number; dz: number; speed: number; seed: number; type: TypeId; }
+interface HitEvent { t: number; id: number; x: number; y: number; z: number; ry: number; dx: number; dz: number; speed: number; seed: number; type: TypeId; int?: number; }
 
 class Smoke {
   mesh: THREE.InstancedMesh;
@@ -98,6 +98,7 @@ class Game {
   kills: Partial<Record<TypeId, number>> = {};
   recentKills: number[] = [];
   shake = 0;
+  screenBlood: BloodFX | null = null; screenBloodT = 0; trainBlood = 0; trainBloodHex = 0xa0000a;
   camMode: CamMode = 'orbit';
   night = false; nightK = 0;
   keys = new Set<string>();
@@ -553,14 +554,18 @@ class Game {
     const speed = this.train.speed, mph = speed * MPH;
     const seed = (Math.random() * 2 ** 31) | 0;
     const T = t.type;
-    const intensity = clamp(0.6 + speed / 30, 0.6, 1.6);
+    // gore tier: speed, rare targets and running combos all crank it up (>= 1.7 = fountain + blood rain)
+    const comboNext = this.time - this.lastKill < 2.5 ? this.combo + 1 : 1;
+    const intensity = Math.min(3, clamp(0.8 + speed / 24, 0.8, 2.1) * (T.rare ? 1.3 : 1) * (comboNext >= 3 ? 1.35 : comboNext >= 2 ? 1.15 : 1));
     this.gore.explode(t.vox, T.s, t.x, t.y, t.z, t.ry, dx, dz, speed, T.bleed, seed, intensity);
     const splatCol = T.bleed === 'green' ? 0x3ad41a : T.bleed === 'oil' ? 0x16120f : T.bleed === 'snow' ? 0xf4f8ff : T.bleed === 'confetti' ? [0xff3b6b, 0xffe14a, 0x4ad2ff][Math.floor(Math.random() * 3)] : T.bleed === 'splinter' ? 0x16161a : 0xa0000a;
-    this.train.addSplat(splatCol, T.rare ? 30 : 14, Math.random);
-    this.synth.gore(T.bleed, (T.rare ? 1.4 : 1) * clamp(0.6 + speed / 28, 0.6, 1.7));
+    this.train.addSplat(splatCol, Math.round((T.rare ? 90 : 42) * intensity), Math.random);
+    if (T.bleed !== 'confetti' && T.bleed !== 'snow') { this.trainBlood = Math.min(14, this.trainBlood + 3 + intensity * 2.5); this.trainBloodHex = splatCol; }
+    this.synth.gore(T.bleed, intensity * (T.rare ? 1.2 : 1));
     this.synth.creature(T.sound);
     this.intro?.onKill(t.id);
-    this.shake = Math.max(this.shake, clamp(0.25 + speed / 40, 0.25, 1));
+    this.shake = Math.max(this.shake, clamp(0.4 + speed / 22, 0.4, 1.5) * (intensity >= 1.7 ? 1.5 : 1));
+    this.hitFX(t.x, t.y, t.z, intensity, T.bleed);
     // scoring
     if (this.time - this.lastKill < 2.5) this.combo++; else this.combo = 1;
     this.lastKill = this.time;
@@ -576,7 +581,7 @@ class Game {
     if (p.z < 1) this.hud.popup((p.x * 0.5 + 0.5) * window.innerWidth, (-p.y * 0.5 + 0.5) * window.innerHeight, ['SPLAT!', 'SPLORCH!', 'KABLOOEY!', 'SQUELCH!', 'BONK!', 'WHAM!'][Math.floor(Math.random() * 6)], `${T.name} +${pts.toLocaleString('en-US')}`, T.bleed === 'green');
     if (this.combo >= 2) { this.hud.combo(`COMBO x${mult}`, this.recentKills.length >= 3 ? 'MULTI-SPLAT' : `${Math.round(mph)} MPH`); this.synth.combo(this.combo); }
     this.hud.killboard(this.kills, T.id);
-    const ev: HitEvent = { t: this.time, id: t.id, x: t.x, y: t.y, z: t.z, ry: t.ry, dx, dz, speed, seed, type: T.id };
+    const ev: HitEvent = { t: this.time, id: t.id, x: t.x, y: t.y, z: t.z, ry: t.ry, dx, dz, speed, seed, type: T.id, int: intensity };
     this.events.push(ev);
     // instant replay for the gruesome stuff
     const gruesome = T.rare || this.combo >= 4 || this.recentKills.length >= 3 || (mph > 62 && Math.random() < 0.5) || forceReplayNext;
@@ -665,10 +670,12 @@ class Game {
         R.fired.add(e);
         const T = TYPES[e.type];
         const tg = this.byId.get(e.id);
-        this.gore.explode(tg ? tg.vox : [], T.s, e.x, e.y, e.z, e.ry, e.dx, e.dz, e.speed, T.bleed, e.seed, clamp(0.6 + e.speed / 30, 0.6, 1.6));
-        this.synth.gore(T.bleed, 2);
+        const ei = e.int ?? clamp(0.8 + e.speed / 24, 0.8, 2.1);
+        this.gore.explode(tg ? tg.vox : [], T.s, e.x, e.y, e.z, e.ry, e.dx, e.dz, e.speed, T.bleed, e.seed, ei);
+        this.synth.gore(T.bleed, Math.max(2.2, ei * 1.3));
         this.synth.creature(T.sound);
-        this.shake = 0.5;
+        this.shake = 1.1;
+        this.hitFX(e.x, e.y, e.z, Math.max(1.6, ei), T.bleed);
       }
     }
     this.gore.update(dt * SLOWMO);
@@ -729,9 +736,50 @@ class Game {
     this.applyShake(dt);
   }
 
+  /** red flash + blood across the lens for hits near the camera */
+  hitFX(x: number, y: number, z: number, intensity: number, bleed: string) {
+    if (this.intro) return; // the intro stages its own splat
+    const wet = bleed === 'red' || bleed === 'green';
+    const f = document.getElementById('hitflash');
+    if (f) {
+      f.style.setProperty('--hf', String(Math.min(wet ? 0.75 : 0.4, 0.22 + intensity * 0.18)));
+      f.style.background = bleed === 'green' ? '#2fd00e' : bleed === 'oil' ? '#8a6a50' : bleed === 'red' ? '#c00010' : '#ff7088';
+      f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+    }
+    if (!wet) return;
+    const d = this.camera.position.distanceTo(new THREE.Vector3(x, y, z));
+    const near = d < 18 ? 1 : d < 45 ? 0.6 : d < 80 ? 0.3 : 0;
+    const p = new THREE.Vector3(x, y, z).project(this.camera);
+    if (Math.abs(p.x) > 1.3 || Math.abs(p.y) > 1.3 || p.z > 1) return;
+    if (near * intensity < 0.55 && !this.replay) return;
+    if (!this.screenBlood) this.screenBlood = new BloodFX();
+    const n = Math.max(1, Math.min(3, Math.round(near * intensity * 1.6)));
+    const pal = bleed === 'green' ? ['#2aa80e', '#3ad41a', '#22900a'] : ['#8a0008', '#a8000c', '#c20012', '#6e0006'];
+    this.screenBlood.splatter(n, false, 0.4 + 0.18 * intensity, pal, true);
+    this.screenBloodT = 2.2 + intensity * 0.6;
+  }
+
+  updateScreenFX(dt: number) {
+    if (this.screenBlood && this.screenBloodT > 0) {
+      this.screenBlood.update(dt);
+      this.screenBlood.decay(dt, 0.9);
+      this.screenBloodT -= dt;
+      if (this.screenBloodT <= 0) this.screenBlood.fade();
+    }
+    // blood dripping off the cowcatcher for a while after a kill
+    if (this.trainBlood > 0 && !this.replay) {
+      this.trainBlood -= dt;
+      if (Math.random() < dt * (6 + this.trainBlood * 3)) {
+        const p = new THREE.Vector3((Math.random() - 0.5) * 1.6, 0.4 + Math.random() * 1.2, 4.2).applyMatrix4(this.train.loco.matrixWorld);
+        const d = this.trainDir();
+        this.gore.drip(p.x, p.y, p.z, this.trainBloodHex, 1 + Math.floor(Math.random() * 3), d.x * this.train.speed, d.z * this.train.speed);
+      }
+    }
+  }
+
   applyShake(dt: number) {
     if (this.shake > 0.001) {
-      const s = this.shake * 0.35;
+      const s = this.shake * 0.5;
       this.camera.position.x += (Math.random() - 0.5) * s;
       this.camera.position.y += (Math.random() - 0.5) * s;
       this.camera.position.z += (Math.random() - 0.5) * s;
@@ -794,6 +842,7 @@ class Game {
     if (this.replay) this.updateReplay(dt);
     else { this.step(dt * k); if (!this.replay) this.updateCamera(dt); }
     this.intro?.update(dt * k, dt);
+    this.updateScreenFX(dt);
     if (this.intro && !this.intro.active) this.intro = null;
     // soundtrack: cozy until the carnage begins, metal while it lasts
     if (this.started && !this.intro) this.synth.playMusic(this.totalKills > 0 && this.time - this.lastKill < 45 ? 'metal' : 'cozy');

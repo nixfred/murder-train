@@ -59,6 +59,7 @@ Impatient? `Esc` or the **Skip intro** chip skips it. `?skipintro` in the URL ne
 - **Spawn palette.** Pick a target in the Drop Zone (or press 1 to 9), click the terrain, and it falls out of the sky and heads for the rails.
 - **Whistle lure.** The whistle does not scare anything. It makes every curious critter within 60m sprint onto the track.
 - **Voxel gore engine.** Fixed-size `InstancedMesh` pools for body chunks, blood droplets, glowing sparks/confetti and ground decals. Bleed styles per target: red, green (aliens), oil + sparks (robots, cars, UFOs), confetti (ducks), snow, piano splinters. Blood also smears onto the locomotive itself.
+- **MORE BLOOD.** Every hit throws hundreds to thousands of droplets plus a slow heavy gush, meat chunks that trail blood through the air and ooze into growing puddles when they land, layered dark pools at the impact point, and a cowcatcher that keeps dripping for seconds afterward. Fast hits, rare targets and combos climb gore tiers: from tier 1.7 up you get a **blood fountain** and **blood rain** over the track ahead. Near hits splatter the camera lens (in green for aliens), every hit kicks a red flash and harder screen shake, and replays always paint the lens.
 - **Instant replays.** A 7 second ring buffer records train arc-length and every target pose each frame, plus hit events with their RNG seeds. Replays restore that history and re-run the explosions deterministically in slow motion. `R` skips.
 - **Scoring.** Points scale with type, speed and a combo multiplier (up to x10). HUD cards track score, combo, kills, distance, top speed, live voxel count and biome, plus a kill board with procedurally rendered isometric icons.
 - **Procedural soundtrack.** Two tracks written in code with a lookahead WebAudio scheduler. *Cozy*: C major, swung oom-pah at 112 bpm with a toy-piano melody, glockenspiel countermelody and a brushy shaker. *Murder*: E phrygian at 152 bpm, distorted power-chord chugs through a WaveShaper bus, double kick, snare, crashes and a tritone bell lead. The cozy tune plays until you kill something, the metal stays on while the carnage keeps coming, and it drifts back to cozy after 45 quiet seconds. Music slider plus a mute button (or `U`).
@@ -152,7 +153,8 @@ flowchart LR
 ## Performance notes
 
 - Static world voxels are baked into one `InstancedMesh` per chunk (plus a tiny unlit one for glowing windows and crystals). Around 250k to 400k voxels are live at once, in roughly 100 draw calls.
-- Gore uses four fixed pools totalling about 21k instances. No allocation per hit.
+- Gore uses fixed ring-buffer pools (14k chunks, 20k droplets, 3.5k sparks, 16k decals). No allocation per hit. The oldest gore is recycled first, settled bits fade faster when a pool runs hot, settled chunks skip matrix rebuilds, only the live range of each pool is drawn and uploaded, and airborne particles skip terrain lookups.
+- Headless stress test: 11 to 14 back-to-back kills at about 85 MPH with every gore pool saturated (around 33k live particles) costs about 3.4 to 4.2ms per simulation tick on the box CPU.
 - Chunk generation is time-sliced at 4ms per frame. A chunk takes 1 to 6ms to build.
 - Simulation costs about 1.5ms per frame on the CPU. The GPU is the budget, and a 12GB card has plenty.
 

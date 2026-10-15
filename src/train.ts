@@ -23,7 +23,7 @@ export class Train {
   segments: Segment[] = [];
   splat: THREE.InstancedMesh;
   private splatN = 0;
-  private splatMax = 500;
+  private splatMax = 1600;
   headlight: THREE.SpotLight;
   voxelCount = 0;
   private tp: TrackPoint = { x: 0, z: 0, h: 0, dx: 0, dz: -1 };
@@ -111,7 +111,7 @@ export class Train {
       const k = this.splatN++ % this.splatMax;
       const face = rnd();
       let x: number, y: number, z: number, sx: number, sy: number, sz: number;
-      const sz0 = 0.12 + rnd() * 0.22;
+      const sz0 = 0.16 + rnd() * 0.38;
       if (face < 0.55) { // front: cowcatcher + smokebox
         x = (rnd() - 0.5) * 2.0; y = rnd() * 3.2; z = y < 0.9 ? 4.35 - y * 0.3 : 3.5; sx = sz0; sy = sz0 * (1 + rnd()); sz = 0.06;
       } else if (face < 0.85) { // sides

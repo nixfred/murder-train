@@ -63,20 +63,22 @@ export class Synth {
   gore(bleed: string, big = 1) {
     if (!this.ok) return;
     const t = this.now, c = this.ctx!, r = this.rate;
-    const B = Math.min(2.2, big);
+    const B = Math.min(3, big);
+    const L = Math.min(1.6, 0.75 + B * 0.3); // loudness scale (compressor on master catches peaks)
     const wet = bleed === 'red' || bleed === 'green';
     // slap: the body hits the cowcatcher
     { const n = this.noiseSrc(t, 0.08); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2200 * r;
-      const g = c.createGain(); this.env(g, t, 0.002, 0.7 * B, 0.07 / r); n.connect(f).connect(g).connect(this.master); }
-    this.thudAt(t, 0.8 * B, 95 * r);
+      const g = c.createGain(); this.env(g, t, 0.002, 1.0 * L, 0.09 / r); n.connect(f).connect(g).connect(this.master); }
+    this.thudAt(t, 1.0 * L, 95 * r);
+    if (B > 1.5) this.thudAt(t + 0.02, 0.8 * L, 55 * r); // sub impact on big hits
     if (wet || bleed === 'snow') {
       // squish: resonant noise with a wobbling formant
-      const n = this.noiseSrc(t, 0.45 / r);
-      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 6;
+      const n = this.noiseSrc(t, (0.5 + 0.15 * B) / r);
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 7;
       const base = (bleed === 'green' ? 900 : 420) * r;
       f.frequency.setValueAtTime(base * 2.5, t);
-      for (let k = 1; k <= 6; k++) f.frequency.linearRampToValueAtTime(base * (0.6 + Math.random() * 1.8), t + (k * 0.06) / r);
-      const g = c.createGain(); this.env(g, t + 0.01, 0.01, (bleed === 'snow' ? 0.25 : 0.65) * B, 0.4 / r);
+      for (let k = 1; k <= 9; k++) f.frequency.linearRampToValueAtTime(base * (0.6 + Math.random() * 1.8), t + (k * 0.06) / r);
+      const g = c.createGain(); this.env(g, t + 0.01, 0.01, (bleed === 'snow' ? 0.3 : 1.0) * L, (0.45 + 0.12 * B) / r);
       n.connect(f).connect(g).connect(this.master);
     }
     // crunch: bones / metal / wood snapping
@@ -92,18 +94,31 @@ export class Synth {
     }
     if (wet) {
       // gush: gurgling low noise with an LFO
-      const dur = (0.5 + 0.5 * B) / r;
+      // splatter patter: dozens of tiny wet hits as the spray lands
+      const np = Math.floor(10 + 8 * B);
+      for (let k = 0; k < np; k++) {
+        const tk = t + (0.08 + Math.random() * (0.5 + 0.25 * B)) / r;
+        const pn = this.noiseSrc(tk, 0.05);
+        const pf = c.createBiquadFilter(); pf.type = 'bandpass'; pf.Q.value = 3; pf.frequency.value = (bleed === 'green' ? 1400 : 600 + Math.random() * 900) * r;
+        const pg = c.createGain(); this.env(pg, tk, 0.002, (0.12 + Math.random() * 0.22) * L, 0.04 / r);
+        pn.connect(pf).connect(pg).connect(this.master);
+      }
+      // second squelch a beat later
+      { const tk = t + 0.12 / r; const n2 = this.noiseSrc(tk, 0.3 / r); const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 9;
+        f2.frequency.setValueAtTime(700 * r, tk); f2.frequency.exponentialRampToValueAtTime(180 * r, tk + 0.25 / r);
+        const g2 = c.createGain(); this.env(g2, tk, 0.01, 0.6 * L, 0.28 / r); n2.connect(f2).connect(g2).connect(this.master); }
+      const dur = (0.7 + 0.6 * B) / r;
       const n = this.noiseSrc(t + 0.05, dur);
       const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(900 * r, t); f.frequency.exponentialRampToValueAtTime(220 * r, t + dur);
       const am = c.createGain(); am.gain.value = 0.5;
       const lfo = this.osc('sine', (9 + Math.random() * 6) * r, t, dur); const lg = c.createGain(); lg.gain.value = 0.5; lfo.connect(lg).connect(am.gain);
-      const g = c.createGain(); this.env(g, t + 0.05, 0.03, 0.55 * B, dur);
+      const g = c.createGain(); this.env(g, t + 0.05, 0.03, 0.95 * L, dur);
       n.connect(f).connect(am).connect(g).connect(this.master);
       // drips
-      for (let k = 0; k < 3 + B * 3; k++) {
-        const tk = t + (0.35 + Math.random() * 1.1) / r;
+      for (let k = 0; k < 5 + B * 5; k++) {
+        const tk = t + (0.35 + Math.random() * (1.4 + B * 0.6)) / r;
         const o = this.osc('sine', (900 + Math.random() * 700) * r, tk, 0.08); o.frequency.exponentialRampToValueAtTime(260 * r, tk + 0.06);
-        const og = c.createGain(); this.env(og, tk, 0.002, 0.08, 0.07); o.connect(og).connect(this.master);
+        const og = c.createGain(); this.env(og, tk, 0.002, 0.13, 0.07); o.connect(og).connect(this.master);
       }
     }
     if (bleed === 'oil') this.metal();
