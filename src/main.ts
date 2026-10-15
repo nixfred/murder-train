@@ -11,11 +11,13 @@ import { Target, TYPES, TypeId, TYPE_IDS, BIOME_SPAWNS, Behavior } from './targe
 import { BOX, lin, modelGroup } from './voxels';
 import { mulberry32, clamp, lerp } from './rng';
 import * as M from './models';
+import { Intro } from './intro';
 
 const params = new URLSearchParams(location.search);
 const SEED = +(params.get('seed') ?? 7);
 const RADIUS = +(params.get('radius') ?? 150);
 const AUTOSTART = params.has('autostart');
+const SKIP_INTRO = AUTOSTART || params.has('skipintro');
 const MANUAL = params.has('manual');
 if (params.has('clean')) document.body.classList.add('clean'); // headless tests drive frames explicitly
 const MPH = 2.6; // world units/s -> scale mph
@@ -112,6 +114,7 @@ class Game {
   replay: null | { rt: number; t0: number; t1: number; ev: HitEvent; snap: ReturnType<Gore['snapshot']>; fired: Set<HitEvent>; mode: number; side: number; ang: number; cap: string } = null;
   replayCooldown = 0;
   replays = 0;
+  intro: Intro | null = null;
 
   constructor() {
     const canvas = document.getElementById('c') as HTMLCanvasElement;
@@ -187,7 +190,7 @@ class Game {
     const thr = document.getElementById('thr') as HTMLInputElement;
     const cars = document.getElementById('cars') as HTMLInputElement;
     thr.oninput = () => { this.train.throttle = +thr.value; this.syncThrottle(); };
-    cars.oninput = () => { this.train.setCars(+cars.value); this.hud.fill(cars); document.getElementById('cars-val')!.textContent = cars.value; };
+    cars.oninput = () => { this.train.setCars(+cars.value); document.getElementById('st-cars')!.textContent = String(this.train.cars.length); this.hud.fill(cars); document.getElementById('cars-val')!.textContent = cars.value; };
     document.getElementById('dn')!.onclick = () => this.toggleNight();
     document.querySelectorAll<HTMLButtonElement>('.cam').forEach((b) => (b.onclick = () => this.setCam(b.dataset.cam as CamMode)));
     const wh = document.getElementById('whistle')!;
@@ -198,11 +201,16 @@ class Game {
     br.onpointerup = up; br.onpointerleave = up;
     const mu = document.getElementById('mute')!;
     mu.onclick = () => this.toggleMute();
-    document.getElementById('go')!.onclick = () => this.start();
+    const mus = document.getElementById('mus') as HTMLInputElement;
+    mus.oninput = () => { this.synth.setMusicVolume(+mus.value / 100); this.hud.fill(mus); document.getElementById('mus-val')!.textContent = mus.value; };
+    this.hud.fill(mus);
+    const mb = document.getElementById('musbtn')!;
+    mb.onclick = () => { this.synth.unlock(); this.synth.setMusicMuted(!this.synth.musicMuted); mb.classList.toggle('muted', this.synth.musicMuted); };
 
     window.addEventListener('keydown', (e) => {
       if (e.repeat && e.code !== 'KeyW' && e.code !== 'KeyS') return;
       this.synth.unlock();
+      if (this.intro?.active) { if (this.intro.key(e.code)) { e.preventDefault(); return; } }
       this.keys.add(e.code);
       if (!this.started && (e.code === 'Enter' || e.code === 'Space')) { this.start(); e.preventDefault(); return; }
       switch (e.code) {
@@ -211,6 +219,7 @@ class Game {
         case 'KeyR': if (this.replay) this.endReplay(); break;
         case 'KeyN': this.toggleNight(); break;
         case 'KeyM': this.toggleMute(); break;
+        case 'KeyU': document.getElementById('musbtn')!.click(); break;
         case 'KeyB': this.train.braking = true; break;
       }
       const d = parseInt(e.key);
@@ -222,6 +231,7 @@ class Game {
     let down: { x: number; y: number } | null = null;
     canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; this.synth.unlock(); });
     canvas.addEventListener('pointerup', (e) => {
+      if (this.intro?.active) { this.intro.click(); down = null; return; }
       if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6 && this.started && !this.replay) this.clickDrop(e.clientX, e.clientY);
       down = null;
     });
@@ -238,8 +248,8 @@ class Game {
     if (this.started) return;
     this.started = true;
     if (gesture) this.synth.unlock();
-    document.getElementById('start')!.classList.add('hidden');
-    if (this.train.throttle === 0) { this.train.throttle = 4; this.syncThrottle(); }
+    this.hud.select(this.hud.selected);
+    if (this.train.throttle < 4) { this.train.throttle = 4; this.syncThrottle(); }
     this.whistle();
   }
 
@@ -275,6 +285,13 @@ class Game {
   }
 
   trainDir() { const s = this.train.segments[0]; return s ? new THREE.Vector3(s.dx, 0, s.dz) : new THREE.Vector3(0, 0, -1); }
+
+  spawnOnTrack(type: TypeId, ahead: number, lat: number, beh: Behavior = 'stand'): number {
+    const tp = this.track.at(this.train.s + ahead);
+    const t = this.addTarget(type, tp.x - tp.dz * lat, tp.z + tp.dx * lat, beh);
+    t.ry = Math.atan2(-tp.dz, tp.dx) * (lat > 0 ? 1 : -1);
+    return t.id;
+  }
 
   // ------------------------------------------------------------ spawning
   addTarget(type: TypeId, x: number, z: number, beh: Behavior, variant = Math.floor(this.rng() * 99)): Target {
@@ -540,8 +557,9 @@ class Game {
     this.gore.explode(t.vox, T.s, t.x, t.y, t.z, t.ry, dx, dz, speed, T.bleed, seed, intensity);
     const splatCol = T.bleed === 'green' ? 0x3ad41a : T.bleed === 'oil' ? 0x16120f : T.bleed === 'snow' ? 0xf4f8ff : T.bleed === 'confetti' ? [0xff3b6b, 0xffe14a, 0x4ad2ff][Math.floor(Math.random() * 3)] : T.bleed === 'splinter' ? 0x16161a : 0xa0000a;
     this.train.addSplat(splatCol, T.rare ? 30 : 14, Math.random);
-    this.synth.splat(T.rare ? 1.3 : 1);
+    this.synth.gore(T.bleed, (T.rare ? 1.4 : 1) * clamp(0.6 + speed / 28, 0.6, 1.7));
     this.synth.creature(T.sound);
+    this.intro?.onKill(t.id);
     this.shake = Math.max(this.shake, clamp(0.25 + speed / 40, 0.25, 1));
     // scoring
     if (this.time - this.lastKill < 2.5) this.combo++; else this.combo = 1;
@@ -648,7 +666,7 @@ class Game {
         const T = TYPES[e.type];
         const tg = this.byId.get(e.id);
         this.gore.explode(tg ? tg.vox : [], T.s, e.x, e.y, e.z, e.ry, e.dx, e.dz, e.speed, T.bleed, e.seed, clamp(0.6 + e.speed / 30, 0.6, 1.6));
-        this.synth.splat(1.4);
+        this.synth.gore(T.bleed, 2);
         this.synth.creature(T.sound);
         this.shake = 0.5;
       }
@@ -772,8 +790,13 @@ class Game {
   lastNow = 0;
 
   tick(dt: number) {
+    const k = this.intro?.timeScale ?? 1;
     if (this.replay) this.updateReplay(dt);
-    else { this.step(dt); if (!this.replay) this.updateCamera(dt); }
+    else { this.step(dt * k); if (!this.replay) this.updateCamera(dt); }
+    this.intro?.update(dt * k, dt);
+    if (this.intro && !this.intro.active) this.intro = null;
+    // soundtrack: cozy until the carnage begins, metal while it lasts
+    if (this.started && !this.intro) this.synth.playMusic(this.totalKills > 0 && this.time - this.lastKill < 45 ? 'metal' : 'cozy');
     // world streaming always
     const L = this.train.loco.position, d = this.trainDir();
     this.world.update(L.x + d.x * 45, L.z + d.z * 45, this.radius, 4);
@@ -827,10 +850,10 @@ class Game {
     // generate the starting area in one go
     const L = this.train.loco.position, d = this.trainDir();
     this.world.update(L.x + d.x * 45, L.z + d.z * 45, RADIUS, 1e9);
-    document.getElementById('loading')!.textContent = 'World ready. ' + this.world.chunks.size + ' chunks streamed.';
     this.syncThrottle();
     if (!MANUAL) requestAnimationFrame(this.frame);
-    if (AUTOSTART) this.start(false);
+    if (SKIP_INTRO) this.start(false);
+    else this.intro = new Intro(this);
   }
 }
 
@@ -844,7 +867,7 @@ game.boot();
   spawn: (type: TypeId, ahead = 30, lat = 0) => { const tp = game.track.at(game.train.s + ahead); const t = game.addTarget(type, tp.x - tp.dz * lat, tp.z + tp.dx * lat, type === 'ufo' ? 'land' : 'stand'); if (type === 'ufo') t.y = 2; return t.id; },
   throttle: (v: number) => { game.train.throttle = v; game.syncThrottle(); },
   forceReplay: () => { forceReplayNext = true; },
-  state: () => ({ s: game.train.s, speed: game.train.speed, chunks: game.world.chunks.size, targets: game.targets.length, kills: game.totalKills, score: game.score, replay: !!game.replay, replays: game.replays, debris: game.gore.debris.alive, blood: game.gore.blood.alive, voxels: game.world.voxelCount, fps: game.fps, x: game.train.loco.position.x, z: game.train.loco.position.z, biome: game.world.biomeAt(game.train.loco.position.x, game.train.loco.position.z) }),
+  state: () => ({ intro: game.intro?.phase ?? 'done', music: game.synth.music?.mode ?? game.synth.pendingMusic, audio: game.synth.ctx?.state ?? 'none', started: game.started, s: game.train.s, speed: game.train.speed, chunks: game.world.chunks.size, targets: game.targets.length, kills: game.totalKills, score: game.score, replay: !!game.replay, replays: game.replays, debris: game.gore.debris.alive, blood: game.gore.blood.alive, voxels: game.world.voxelCount, fps: game.fps, x: game.train.loco.position.x, z: game.train.loco.position.z, biome: game.world.biomeAt(game.train.loco.position.x, game.train.loco.position.z) }),
   // advance the simulation deterministically (headless GPUs are slow)
   advance: (sec: number, dt = 1 / 30, render = false) => { for (let t = 0; t < sec; t += dt) game.tick(dt); if (!render) return 0; const t0 = performance.now(); game.renderer.render(game.scene, game.camera); return performance.now() - t0; },
   setCam: (m: CamMode) => game.setCam(m),

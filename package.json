@@ -1,7 +1,7 @@
 {
-  "name": "voxel-carnage-express",
+  "name": "murder-train",
   "version": "1.0.0",
-  "description": "Endless procedural voxel train game in three.js. Run everything over.",
+  "description": "Murder Train: an endless procedural voxel train game in three.js. Run everything over.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",

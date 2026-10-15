@@ -21,4 +21,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404); res.end('not found');
   }
-}).listen(port, '0.0.0.0', () => console.log(`Voxel Carnage Express -> http://0.0.0.0:${port}/`));
+}).listen(port, '0.0.0.0', () => console.log(`Murder Train -> http://0.0.0.0:${port}/`));

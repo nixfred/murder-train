@@ -1,4 +1,4 @@
-# Headless verification for Voxel Carnage Express.
+# Headless verification for Murder Train.
 # Loads the built game in headless Chrome (SwiftShader GL), drives the simulation
 # deterministically through window.__vce, checks streaming / gore / replay, saves screenshots.
 import asyncio, json, sys, time

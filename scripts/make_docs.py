@@ -15,13 +15,14 @@ body{margin:0;width:1600px;height:560px;overflow:hidden;font-family:Inter,'Segoe
 .badges{display:flex;gap:8px}
 .b{font-size:15px;font-weight:600;padding:4px 12px;border-radius:999px;border:1px solid;background:rgba(0,0,0,.4)}
 .o{color:#ffb36b;border-color:rgba(255,170,90,.55)}.bl{color:#7cc4ff;border-color:rgba(110,180,255,.55)}.g{color:#7be0a0;border-color:rgba(110,220,150,.5)}.r{color:#ff7a7a;border-color:rgba(255,110,110,.55)}
-h1{margin:18px 0 10px;font-size:84px;line-height:.95;font-weight:900;letter-spacing:-2px;background:linear-gradient(90deg,#ff9f45,#ffd4a3 75%%);-webkit-background-clip:text;color:transparent;filter:drop-shadow(0 4px 18px rgba(0,0,0,.5))}
+h1{position:relative;margin:18px 0 58px;font-size:104px;line-height:.9;font-weight:900;font-style:italic;letter-spacing:-3px;color:#d0000e;transform:skewY(-3deg);text-shadow:0 0 30px rgba(255,0,20,.35),0 7px 0 #4a0004,0 12px 30px rgba(0,0,0,.9)}
+.d{position:absolute;top:84%%;width:9px;background:linear-gradient(#d0000e,#9a000a);border-radius:0 0 8px 8px}.d:after{content:'';position:absolute;left:50%%;bottom:-6px;width:150%%;aspect-ratio:1;transform:translateX(-50%%);background:#b0000c;border-radius:50%%}
 p{margin:0;font-size:24px;color:#e2e2ea;line-height:1.35;text-shadow:0 2px 10px rgba(0,0,0,.6)}
 p b{color:#f5b301}
 .stamp{position:absolute;right:46px;bottom:38px;transform:rotate(-8deg);font-weight:900;font-size:40px;font-style:italic;color:#fff;text-shadow:0 4px 0 #b3262a,0 10px 30px rgba(0,0,0,.6)}
 </style></head><body><div class="bg"></div><div class="shade"></div>
 <div class="box"><div class="badges"><span class="b o">three.js r186</span><span class="b bl">InstancedMesh</span><span class="b g">WebAudio synth</span><span class="b r">Cartoon gore</span></div>
-<h1>Voxel Carnage<br>Express</h1><p>An endless procedural voxel railroad.<br>Drive the train. <b>Run everything over.</b></p></div>
+<h1>MURDER<br>TRAIN<span class="d" style="left:8%%;height:20px"></span><span class="d" style="left:21%%;height:34px;width:11px"></span><span class="d" style="left:37%%;height:14px"></span><span class="d" style="left:52%%;height:44px;width:7px"></span><span class="d" style="left:66%%;height:26px;width:12px"></span><span class="d" style="left:84%%;height:34px"></span></h1><p>An endless procedural voxel railroad.<br>Drive the train. <b>Run everything over.</b></p></div>
 <div class="stamp">SPLAT! x10</div></body></html>"""
 
 async def main():

@@ -1,4 +1,5 @@
 // Every sound is synthesized live with WebAudio. No samples.
+import { Music } from './music';
 export class Synth {
   ctx: AudioContext | null = null;
   master!: GainNode;
@@ -6,6 +7,10 @@ export class Synth {
   muted = false;
   rate = 1; // < 1 in slow-mo replays
   private whistleUntil = 0;
+  music: Music | null = null;
+  musicVolume = 0.7;
+  musicMuted = false;
+  pendingMusic: 'off' | 'cozy' | 'metal' = 'off';
 
   unlock() {
     if (!this.ctx) {
@@ -20,8 +25,98 @@ export class Synth {
       this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
       const d = this.noise.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      this.music = new Music(this.ctx, this.master, this.noise);
+      this.music.setVolume(this.musicMuted ? 0 : this.musicVolume);
+      this.music.play(this.pendingMusic);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  playMusic(mode: 'off' | 'cozy' | 'metal') {
+    this.pendingMusic = mode;
+    this.music?.play(mode);
+  }
+  setMusicVolume(v: number) { this.musicVolume = v; this.music?.setVolume(this.musicMuted ? 0 : v); }
+  setMusicMuted(m: boolean) { this.musicMuted = m; this.music?.setVolume(m ? 0 : this.musicVolume); }
+
+  /** vinyl record scratch + music cut */
+  scratch() {
+    this.pendingMusic = 'off';
+    if (!this.ctx) return;
+    this.music?.cut();
+    if (!this.ok) return;
+    const t = this.now, c = this.ctx;
+    for (const [t0, f0, f1, d] of [[0, 700, 3200, 0.12], [0.12, 3000, 500, 0.16], [0.3, 900, 2600, 0.1]] as const) {
+      const n = this.noiseSrc(t + t0, d);
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 5;
+      f.frequency.setValueAtTime(f0, t + t0); f.frequency.exponentialRampToValueAtTime(f1, t + t0 + d);
+      const g = c.createGain(); this.env(g, t + t0, 0.01, 0.7, d);
+      n.connect(f).connect(g).connect(this.master);
+    }
+    const o = this.osc('sawtooth', 520, t, 0.45); o.frequency.exponentialRampToValueAtTime(45, t + 0.45);
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500;
+    const og = c.createGain(); this.env(og, t, 0.005, 0.25, 0.42);
+    o.connect(lp).connect(og).connect(this.master);
+  }
+
+  /** wet, layered impact: squish + bone crunch + gush + drips. big = 0.5..2 */
+  gore(bleed: string, big = 1) {
+    if (!this.ok) return;
+    const t = this.now, c = this.ctx!, r = this.rate;
+    const B = Math.min(2.2, big);
+    const wet = bleed === 'red' || bleed === 'green';
+    // slap: the body hits the cowcatcher
+    { const n = this.noiseSrc(t, 0.08); const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2200 * r;
+      const g = c.createGain(); this.env(g, t, 0.002, 0.7 * B, 0.07 / r); n.connect(f).connect(g).connect(this.master); }
+    this.thudAt(t, 0.8 * B, 95 * r);
+    if (wet || bleed === 'snow') {
+      // squish: resonant noise with a wobbling formant
+      const n = this.noiseSrc(t, 0.45 / r);
+      const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 6;
+      const base = (bleed === 'green' ? 900 : 420) * r;
+      f.frequency.setValueAtTime(base * 2.5, t);
+      for (let k = 1; k <= 6; k++) f.frequency.linearRampToValueAtTime(base * (0.6 + Math.random() * 1.8), t + (k * 0.06) / r);
+      const g = c.createGain(); this.env(g, t + 0.01, 0.01, (bleed === 'snow' ? 0.25 : 0.65) * B, 0.4 / r);
+      n.connect(f).connect(g).connect(this.master);
+    }
+    // crunch: bones / metal / wood snapping
+    if (bleed !== 'confetti') {
+      const nCr = Math.floor((6 + Math.random() * 6) * B);
+      for (let k = 0; k < nCr; k++) {
+        const tk = t + (Math.random() * 0.18) / r;
+        const n = this.noiseSrc(tk, 0.03);
+        const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = (bleed === 'oil' ? 3500 : 1800 + Math.random() * 2000) * r;
+        const g = c.createGain(); this.env(g, tk, 0.001, (0.25 + Math.random() * 0.35) * B, (0.012 + Math.random() * 0.02) / r);
+        n.connect(f).connect(g).connect(this.master);
+      }
+    }
+    if (wet) {
+      // gush: gurgling low noise with an LFO
+      const dur = (0.5 + 0.5 * B) / r;
+      const n = this.noiseSrc(t + 0.05, dur);
+      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(900 * r, t); f.frequency.exponentialRampToValueAtTime(220 * r, t + dur);
+      const am = c.createGain(); am.gain.value = 0.5;
+      const lfo = this.osc('sine', (9 + Math.random() * 6) * r, t, dur); const lg = c.createGain(); lg.gain.value = 0.5; lfo.connect(lg).connect(am.gain);
+      const g = c.createGain(); this.env(g, t + 0.05, 0.03, 0.55 * B, dur);
+      n.connect(f).connect(am).connect(g).connect(this.master);
+      // drips
+      for (let k = 0; k < 3 + B * 3; k++) {
+        const tk = t + (0.35 + Math.random() * 1.1) / r;
+        const o = this.osc('sine', (900 + Math.random() * 700) * r, tk, 0.08); o.frequency.exponentialRampToValueAtTime(260 * r, tk + 0.06);
+        const og = c.createGain(); this.env(og, tk, 0.002, 0.08, 0.07); o.connect(og).connect(this.master);
+      }
+    }
+    if (bleed === 'oil') this.metal();
+    if (bleed === 'confetti') { // party pop
+      const n = this.noiseSrc(t, 0.1); const g = c.createGain(); this.env(g, t, 0.001, 0.6, 0.09); n.connect(g).connect(this.master);
+      const o = this.osc('square', 520 * r, t + 0.05, 0.4); o.frequency.linearRampToValueAtTime(380 * r, t + 0.45);
+      const og = c.createGain(); this.env(og, t + 0.05, 0.02, 0.07, 0.38); o.connect(og).connect(this.master);
+    }
+  }
+
+  private thudAt(t: number, v: number, f: number) {
+    const o = this.osc('sine', f, t, 0.4); o.frequency.exponentialRampToValueAtTime(30, t + 0.35);
+    const g = this.ctx!.createGain(); this.env(g, t, 0.003, v, 0.38); o.connect(g).connect(this.master);
   }
 
   setMuted(m: boolean) {

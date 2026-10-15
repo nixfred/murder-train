@@ -49,7 +49,8 @@ h1 { margin: 10px 0 6px; font-size: 34px; line-height: 1.05; font-weight: 800; l
 #hint { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; color: #b9b9c4; font-size: 12.5px; text-shadow: 0 1px 6px rgba(0,0,0,.8); pointer-events: none; white-space: nowrap; }
 
 #bar { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; padding: 12px 16px; }
-.slider { width: 168px; }
+.slider { width: 150px; }
+.slider.small { width: 96px; }
 .slider .row { display: flex; justify-content: space-between; font-size: 12px; color: #d4d4dc; margin-bottom: 7px; }
 .slider .num { color: var(--yellow); font-family: ui-monospace, monospace; font-weight: 600; }
 input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px; background: linear-gradient(90deg, #fff var(--p, 0%), rgba(255,255,255,.18) var(--p, 0%)); outline: none; cursor: pointer; }
@@ -72,6 +73,7 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: none; b
 .btn.ghost.active { background: rgba(255,80,80,.18); }
 .btn.icon { padding: 7px 9px; background: rgba(255,255,255,.06); color: #ddd; }
 .btn.icon .x { display: none; } .btn.icon.muted .x { display: inline; } .btn.icon.muted .w { display: none; }
+.btn.icon.muted { color: #ff8a8a; }
 .btn.big { font-size: 15px; padding: 11px 26px; margin-top: 18px; }
 
 #combo { position: fixed; top: 22%; left: 50%; transform: translate(-50%, -50%); font-size: 54px; font-weight: 900; letter-spacing: -1px; color: #fff; text-shadow: 0 4px 0 #b3262a, 0 8px 30px rgba(0,0,0,.6); pointer-events: none; opacity: 0; white-space: nowrap; font-style: italic; }
@@ -107,4 +109,44 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; border-radius: 5
 .keys { display: grid; gap: 7px; font-size: 13px; color: #c4c4cc; }
 #loading { margin-top: 12px; font-size: 12px; color: #777; }
 
-body.clean #title, body.clean #stats, body.clean #killboard, body.clean #palette, body.clean #bar, body.clean #hint, body.clean #start, body.clean #popups, body.clean #combo { display: none !important; }
+body.clean #title, body.clean #stats, body.clean #killboard, body.clean #palette, body.clean #bar, body.clean #hint, body.clean #cozycard, body.clean #skipintro, body.clean #popups, body.clean #combo { display: none !important; }
+
+/* ---------------- intro ---------------- */
+body.intro .game-only, body:not(.intro) .cozy-only { display: none !important; }
+body.intro #palette, body.intro #killboard { display: none; }
+body.intro #title h1 { background: linear-gradient(90deg, #ff9f45, #ffd4a3 70%); -webkit-background-clip: text; background-clip: text; }
+#cozycard { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 26px 32px 24px; width: 440px; text-align: center; z-index: 12; display: none; transition: opacity .6s, transform .6s; }
+#cozycard .badges { justify-content: center; }
+#cozycard h2 { margin: 14px 0 8px; font-size: 38px; font-weight: 800; letter-spacing: -.6px; background: linear-gradient(90deg, #ff9f45, #ffd4a3); -webkit-background-clip: text; background-clip: text; color: transparent; }
+#cozycard p { margin: 0; color: #cfcfd8; font-size: 14px; line-height: 1.5; }
+#cozycard .btn { margin-top: 18px; }
+body.gate #cozycard { display: block; }
+#skipintro { position: fixed; right: 18px; bottom: 96px; z-index: 25; display: none; font-size: 12px; gap: 8px; background: rgba(0,0,0,.45); }
+body.intro #skipintro { display: inline-flex; }
+body.titlecard #skipintro { display: none; }
+#bloodfx { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 15; opacity: 0; transition: opacity 1.2s; }
+#bloodfx.on { opacity: 1; transition: none; }
+#flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 16; }
+#flash.go { animation: flash .5s ease-out; }
+@keyframes flash { 0% { opacity: .95; background: #fff; } 30% { opacity: .7; background: #c00010; } 100% { opacity: 0; background: #c00010; } }
+#titlescreen { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 45%, #2a0006 0%, #0b0002 55%, #000 100%); }
+body.titlecard #titlescreen { display: flex; }
+body.titlecard #title, body.titlecard #stats, body.titlecard #bar, body.titlecard #hint { opacity: 0; }
+.tsinner { text-align: center; }
+.murderwrap { position: relative; display: inline-block; }
+h1.murder { margin: 0; font-size: min(10.5vw, 168px); line-height: .9; font-weight: 900; letter-spacing: -3px; font-style: italic; background: none; -webkit-background-clip: border-box; background-clip: border-box; color: #d0000e; text-shadow: 0 0 40px rgba(255,0,20,.35), 0 8px 0 #4a0004, 0 14px 30px rgba(0,0,0,.9); transform: skewY(-3deg); }
+body.titlecard h1.murder { animation: slam .55s cubic-bezier(.2, 1.7, .35, 1) both, shudder 3s 0.6s infinite; }
+@keyframes slam { 0% { transform: skewY(-3deg) scale(3.2); opacity: 0; filter: blur(8px); } 60% { opacity: 1; filter: blur(0); } 100% { transform: skewY(-3deg) scale(1); opacity: 1; } }
+@keyframes shudder { 0%, 92%, 100% { translate: 0 0; } 94% { translate: -4px 2px; } 96% { translate: 5px -2px; } 98% { translate: -2px 1px; } }
+#drips { position: absolute; left: 3%; right: 3%; top: 80%; height: 0; pointer-events: none; transform: skewY(-3deg); }
+.drip { position: absolute; top: 0; width: 10px; height: 0; background: linear-gradient(#d0000e, #9a000a); border-radius: 0 0 8px 8px; animation: drip var(--d) var(--delay) cubic-bezier(.5, 0, .7, 1) forwards; }
+.drip::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 150%; aspect-ratio: 1; transform: translateX(-50%); background: #b0000c; border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%; }
+@keyframes drip { to { height: var(--h); } }
+.tagline { margin-top: 70px; color: #d9b3b3; font-size: 18px; letter-spacing: 3px; text-transform: uppercase; font-weight: 600; opacity: 0; }
+body.titlecard .tagline { animation: fadein .6s 1s forwards; }
+.pressany { margin-top: 26px; font-size: 15px; letter-spacing: 6px; text-transform: uppercase; color: #fff; font-weight: 800; opacity: 0; }
+body.titlecard .pressany { animation: fadein .4s 1.4s forwards, blink2 1.1s 1.8s infinite; }
+.tskeys { margin-top: 26px; color: #8a7070; font-size: 12.5px; opacity: 0; }
+body.titlecard .tskeys { animation: fadein .6s 1.8s forwards; }
+@keyframes fadein { to { opacity: 1; } }
+@keyframes blink2 { 50% { opacity: .25; } }
