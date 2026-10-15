@@ -105,7 +105,7 @@ export class Track {
     out.fill(R);
     const i0 = this.idxForZ(z0 + n + R), i1 = this.idxForZ(z0 - R);
     const R2 = R * R;
-    for (let i = i0; i <= i1; i += 1) {
+    for (let i = i0; i <= i1; i += 2) {
       const px = this.xs[i] - x0, pz = this.zs[i] - z0;
       const ax = Math.max(0, Math.floor(px - R)), bx = Math.min(n - 1, Math.ceil(px + R));
       const az = Math.max(0, Math.floor(pz - R)), bz = Math.min(n - 1, Math.ceil(pz + R));

@@ -90,7 +90,7 @@ export class World {
 
   private genChunk(cx: number, cz: number): Chunk {
     const N = CHUNK, x0 = cx * N, z0 = cz * N;
-    this.track.distGrid(x0 - 1, z0 - 1, N + 2, 16, this.distBig);
+    this.track.distGrid(x0 - 1, z0 - 1, N + 2, 24, this.distBig);
     const cs = this.track.crossings.filter((c) => Math.abs(c.x - (x0 + N / 2)) < c.half + N && Math.abs(c.z - (z0 + N / 2)) < c.half + N);
     const L = new VoxelList();
     const heights = new Int8Array(N * N);
@@ -108,10 +108,13 @@ export class World {
       roadD[j * W + i] = rd.d; roadA[j * W + i] = rd.along;
       const flat = Math.min(smoothstep(3.5, 15, dT), smoothstep(2.2, 7, rd.d));
       h = Math.round(h * flat);
+      // slope cap keeps a clean cutting around the line (no mesa walls hugging the rails)
+      const cap = Math.floor(Math.max(0, Math.min(dT >= 23.9 ? 99 : dT - 4, rd.d - 2.5)) * 0.6);
+      if (h > cap) h = cap;
       // ponds
       if (h <= 0 && (b === 'farm' || b === 'forest' || b === 'town') && dT > 9 && rd.d > 5) {
-        const p = vnoise(x * 0.04, z * 0.04, this.seed + 21);
-        if (p > 0.7) h = -1;
+        const p = vnoise(x * 0.05, z * 0.05, this.seed + 21);
+        if (p > 0.8) h = -1;
       }
       if (h > 30) h = 30;
       this.hgrid[j * W + i] = h;
@@ -205,7 +208,7 @@ export class World {
       const dT = this.distBig[gi], rD = roadD[gi];
       const b = biomeGrid[gi];
       const x = x0 + i + 0.5, z = z0 + j + 0.5;
-      if (h < 0 || dT < 5.5 || rD < 3.5) continue;
+      if (h < 0 || dT < 6.5 || rD < 4) continue;
       const roll = r();
       const rot = Math.floor(r() * 4) * (Math.PI / 2);
       const put = (vox: Vox[], s = 0.5, big = false) => {
@@ -215,34 +218,34 @@ export class World {
       const pk = (key: string, n: number, f: (r: RNG) => Vox[]) => { const a = this.cached(key, n, f); return a[Math.floor(r() * a.length)]; };
       switch (b) {
         case 'farm':
-          if (roll < 0.035 && dT > 12) put(pk('barn', 2, (q) => M.barn(q)), 0.5, true);
-          else if (roll < 0.05 && dT > 10) put(this.cached('silo', 1, () => M.silo())[0], 0.5, true);
-          else if (roll < 0.12) put(pk('house', 10, (q) => M.house(q)), 0.5, true);
-          else if (roll < 0.3) put(pk('apple', 8, (q) => M.appleTree(q)), 0.5);
-          else if (roll < 0.36) put(this.cached('hay', 1, () => M.haystack())[0], 0.5);
-          else if (roll < 0.39) put(pk('rock', 6, (q) => M.rock(q)), 0.5);
+          if (roll < 0.012 && dT > 14) put(pk('barn', 2, (q) => M.barn(q)), 0.5, true);
+          else if (roll < 0.018 && dT > 12) put(this.cached('silo', 1, () => M.silo())[0], 0.5, true);
+          else if (roll < 0.05 && dT > 10) put(pk('house', 10, (q) => M.house(q)), 0.5, true);
+          else if (roll < 0.2) put(pk('apple', 8, (q) => M.appleTree(q)), 0.5);
+          else if (roll < 0.25) put(this.cached('hay', 1, () => M.haystack())[0], 0.5);
+          else if (roll < 0.28) put(pk('rock', 6, (q) => M.rock(q)), 0.5);
           break;
         case 'town':
-          if (roll < 0.42 && dT > 7) put(pk('house', 10, (q) => M.house(q)), 0.5, true);
-          else if (roll < 0.45 && dT > 10) put(this.cached('wt', 1, () => M.waterTower())[0], 0.5, true);
-          else if (roll < 0.6) put(pk('apple', 8, (q) => M.appleTree(q)), 0.5);
-          else if (roll < 0.7) { put(this.cached('lamp', 1, () => M.lamp())[0], 0.4); lights++; }
+          if (roll < 0.36 && dT > 10) put(pk('house', 10, (q) => M.house(q)), 0.5, true);
+          else if (roll < 0.38 && dT > 12) put(this.cached('wt', 1, () => M.waterTower())[0], 0.5, true);
+          else if (roll < 0.5 && dT > 9) put(pk('apple', 8, (q) => M.appleTree(q)), 0.5);
+          else if (roll < 0.6) { put(this.cached('lamp', 1, () => M.lamp())[0], 0.4); lights++; }
           break;
         case 'forest':
-          if (roll < 0.55) put(pk('apple', 8, (q) => M.appleTree(q)), 0.5);
-          else if (roll < 0.8) put(pk('pine', 6, (q) => M.pine(q, false)), 0.5);
+          if (roll < 0.36) put(pk('apple', 8, (q) => M.appleTree(q)), 0.5);
+          else if (roll < 0.6) put(pk('pine', 6, (q) => M.pine(q, false)), 0.5);
           else if (roll < 0.86) put(pk('rock', 6, (q) => M.rock(q)), 0.5);
           break;
         case 'desert':
           if (roll < 0.16) put(pk('cactus', 6, (q) => M.cactus(q)), 0.5);
           else if (roll < 0.22) put(pk('drock', 6, (q) => M.rock(q, false, 0xb0603a)), 0.5);
           else if (roll < 0.24) put(this.cached('skull', 1, () => M.skull())[0], 0.4);
-          else if (roll < 0.26 && dT > 10) put(pk('house', 10, (q) => M.house(q)), 0.5, true);
+          else if (roll < 0.25 && dT > 12) put(pk('house', 10, (q) => M.house(q)), 0.5, true);
           break;
         case 'snow':
-          if (roll < 0.35) put(pk('spine', 6, (q) => M.pine(q, true)), 0.5);
+          if (roll < 0.3) put(pk('spine', 6, (q) => M.pine(q, true)), 0.5);
           else if (roll < 0.47) put(pk('srock', 6, (q) => M.rock(q, true)), 0.5);
-          else if (roll < 0.5 && dT > 9) put(pk('house', 10, (q) => M.house(q)), 0.5, true);
+          else if (roll < 0.49 && dT > 12) put(pk('house', 10, (q) => M.house(q)), 0.5, true);
           break;
         case 'alien':
           if (roll < 0.03 && dT > 16) put(this.cached('saucer', 1, () => M.crashedSaucer())[0], 0.5, true);

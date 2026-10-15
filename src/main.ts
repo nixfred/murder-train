@@ -16,6 +16,8 @@ const params = new URLSearchParams(location.search);
 const SEED = +(params.get('seed') ?? 7);
 const RADIUS = +(params.get('radius') ?? 150);
 const AUTOSTART = params.has('autostart');
+const MANUAL = params.has('manual');
+if (params.has('clean')) document.body.classList.add('clean'); // headless tests drive frames explicitly
 const MPH = 2.6; // world units/s -> scale mph
 const SLOWMO = 0.3;
 
@@ -37,9 +39,9 @@ class Smoke {
   emit(x: number, y: number, z: number, vx: number, vz: number) {
     const i = this.next; this.next = (this.next + 1) % this.n;
     this.pos.set([x + (Math.random() - 0.5) * 0.3, y, z + (Math.random() - 0.5) * 0.3], i * 3);
-    this.vel.set([vx + (Math.random() - 0.5) * 0.8, 2.6 + Math.random() * 1.6, vz + (Math.random() - 0.5) * 0.8], i * 3);
+    this.vel.set([vx + (Math.random() - 0.5) * 0.8, 3.4 + Math.random() * 2, vz + (Math.random() - 0.5) * 0.8], i * 3);
     this.life[i] = 2.6 + Math.random();
-    this.size[i] = 0.35 + Math.random() * 0.25;
+    this.size[i] = 0.45 + Math.random() * 0.3;
     this.rot[i] = Math.random() * 3;
     const g = 0.82 + Math.random() * 0.18;
     const c = this.mesh.instanceColor!.array as Float32Array;
@@ -53,9 +55,9 @@ class Smoke {
       if (this.life[i] <= 0) { if (a[i * 16 + 15]) a.fill(0, i * 16, i * 16 + 16); continue; }
       this.life[i] -= dt;
       const o = i * 3;
-      this.vel[o + 1] *= 1 - dt * 0.5; this.vel[o] *= 1 - dt * 0.8; this.vel[o + 2] *= 1 - dt * 0.8;
+      this.vel[o + 1] *= 1 - dt * 0.35; this.vel[o] *= 1 - dt * 0.8; this.vel[o + 2] *= 1 - dt * 0.8;
       this.pos[o] += this.vel[o] * dt; this.pos[o + 1] += this.vel[o + 1] * dt; this.pos[o + 2] += this.vel[o + 2] * dt;
-      this.size[i] += dt * 0.55;
+      this.size[i] += dt * 0.7;
       const k = Math.min(1, this.life[i] / 0.8);
       const sc = this.size[i] * k;
       this.rot[i] += dt * 0.6;
@@ -168,9 +170,9 @@ class Game {
 
     this.train.place(this.train.s);
     const L = this.train.loco.position;
-    this.camera.position.set(L.x - 16, 11, L.z + 12);
-    this.controls.target.copy(L);
     this.lastLoco.copy(L);
+    this.setCam('orbit');
+    this.controls.update();
     this.applyLighting(0);
     this.bindUI();
     window.addEventListener('resize', () => {
@@ -189,7 +191,7 @@ class Game {
     document.getElementById('dn')!.onclick = () => this.toggleNight();
     document.querySelectorAll<HTMLButtonElement>('.cam').forEach((b) => (b.onclick = () => this.setCam(b.dataset.cam as CamMode)));
     const wh = document.getElementById('whistle')!;
-    wh.onclick = () => this.whistle();
+    wh.onclick = () => { this.synth.unlock(); this.whistle(); };
     const br = document.getElementById('brake')!;
     br.onpointerdown = () => { this.train.braking = true; br.classList.add('active'); };
     const up = () => { this.train.braking = false; br.classList.remove('active'); };
@@ -232,10 +234,10 @@ class Game {
     document.getElementById('thr-val')!.textContent = this.train.throttle.toFixed(1);
   }
 
-  start() {
+  start(gesture = true) {
     if (this.started) return;
     this.started = true;
-    this.synth.unlock();
+    if (gesture) this.synth.unlock();
     document.getElementById('start')!.classList.add('hidden');
     if (this.train.throttle === 0) { this.train.throttle = 4; this.syncThrottle(); }
     this.whistle();
@@ -248,7 +250,7 @@ class Game {
     this.standS = -1e9;
     if (m === 'orbit') {
       const L = this.train.loco.position, d = this.trainDir();
-      this.camera.position.set(L.x - d.z * 16 - d.x * 8, L.y + 11, L.z + d.x * 16 - d.z * 8);
+      this.camera.position.set(L.x - d.z * 22 - d.x * 12, L.y + 19, L.z + d.x * 22 - d.z * 12);
       this.controls.target.copy(L);
     }
   }
@@ -263,10 +265,10 @@ class Game {
     this.skyU.bot.value.copy(c(0xd9b88a, 0x0d1020));
     (this.scene.fog as THREE.Fog).color.copy(c(0xefcfa2, 0x151b33));
     this.sun.color.copy(c(0xffdcb0, 0x8fa8ff));
-    this.sun.intensity = lerp(2.7, 0.35, k);
-    this.hemi.color.copy(c(0xcfe2ff, 0x3a4a80));
+    this.sun.intensity = lerp(2.7, 0.9, k);
+    this.hemi.color.copy(c(0xcfe2ff, 0x5a6ab0));
     this.hemi.groundColor.copy(c(0x5a4a36, 0x10121c));
-    this.hemi.intensity = lerp(1.05, 0.35, k);
+    this.hemi.intensity = lerp(1.05, 0.75, k);
     this.train.headlight.intensity = k * 60;
     this.smoke.mat.color.copy(c(0xffffff, 0x8890a8));
     this.renderer.toneMappingExposure = lerp(1.05, 1.25, k);
@@ -484,7 +486,6 @@ class Game {
   }
 
   whistle() {
-    this.synth.unlock();
     this.synth.whistle();
     const wb = document.getElementById('whistle')!;
     wb.classList.add('active'); setTimeout(() => wb.classList.remove('active'), 250);
@@ -561,7 +562,7 @@ class Game {
     this.events.push(ev);
     // instant replay for the gruesome stuff
     const gruesome = T.rare || this.combo >= 4 || this.recentKills.length >= 3 || (mph > 62 && Math.random() < 0.5) || forceReplayNext;
-    if (gruesome && !this.pendingReplay && this.time > this.replayCooldown) {
+    if (gruesome && !this.pendingReplay && (this.time > this.replayCooldown || forceReplayNext)) {
       forceReplayNext = false;
       const cap = this.recentKills.length >= 3 ? `${this.recentKills.length}x MULTI-SPLAT · ${Math.round(mph)} MPH` : `${T.name.toUpperCase()} DOWN · ${Math.round(mph)} MPH${this.combo > 1 ? ' · COMBO x' + mult : ''}`;
       this.pendingReplay = { at: this.time + 1.5, ev, cap };
@@ -613,7 +614,7 @@ class Game {
     this.train.place(this.train.s);
     this.hud.replay(false);
     this.camera.fov = 50; this.camera.updateProjectionMatrix();
-    this.replayCooldown = this.time + 6;
+    this.replayCooldown = this.time + 14;
     if (this.camMode === 'orbit') this.setCam('orbit');
     this.lastLoco.copy(this.train.loco.position);
   }
@@ -665,7 +666,7 @@ class Game {
       cam.copy(P).addScaledVector(rot, 9).addScaledVector(D, 2.5).add(new THREE.Vector3(0, 1.3, 0));
       look.copy(P).addScaledVector(D, 1.5).add(new THREE.Vector3(0, 1.4, 0));
     } else if (R.mode === 1) { // on the rails, train coming at you
-      cam.copy(P).addScaledVector(D, 13 + R.ang * 6).addScaledVector(N, 2.4).add(new THREE.Vector3(0, 0.9, 0));
+      cam.copy(P).addScaledVector(D, 14 + R.ang * 4).addScaledVector(N, 3.8).add(new THREE.Vector3(0, 1.3, 0));
       look.copy(P).addScaledVector(D, -3).add(new THREE.Vector3(0, 1.6, 0));
     } else { // crane
       cam.copy(P).addScaledVector(N, 11).addScaledVector(D, -5 + R.ang * 10).add(new THREE.Vector3(0, 6.5, 0));
@@ -688,7 +689,7 @@ class Game {
       this.controls.target.set(L.x + d.x * 3, L.y + 1, L.z + d.z * 3);
       this.controls.update();
     } else if (this.camMode === 'chase') {
-      const want = new THREE.Vector3(L.x - d.x * 15, L.y + 6.5, L.z - d.z * 15);
+      const want = new THREE.Vector3(L.x - d.x * 16, L.y + 8, L.z - d.z * 16);
       want.y = Math.max(want.y, this.world.heightAt(want.x, want.z) + 2);
       this.camera.position.lerp(want, 1 - Math.exp(-dt * 4));
       this.camera.lookAt(L.x + d.x * 10, L.y + 2, L.z + d.z * 10);
@@ -703,6 +704,9 @@ class Game {
       this.camera.position.copy(this.standCam);
       this.camera.lookAt(L.x, L.y + 1.5, L.z);
     }
+    // never let a live camera sink into the terrain
+    const gy = this.world.heightAt(this.camera.position.x, this.camera.position.z) + 1.2;
+    if (this.camera.position.y < gy) this.camera.position.y = gy;
     this.lastLoco.copy(L);
     this.applyShake(dt);
   }
@@ -748,7 +752,7 @@ class Game {
     if (nextX) { this.bellT -= dt; if (this.bellT < 0) { this.bellT = 0.55; this.synth.bell(); } }
     // spawn
     this.spawnAcc += ds + dt * 1.2;
-    if (this.started && this.spawnAcc > this.nextGap) { this.spawnAcc = 0; this.nextGap = 14 + this.rng() * 20; this.spawnEvent(); }
+    if (this.started && this.spawnAcc > this.nextGap) { this.spawnAcc = 0; this.nextGap = 18 + this.rng() * 24; this.spawnEvent(); }
     this.updateTargets(dt);
     this.collide();
     this.gore.update(dt);
@@ -772,7 +776,7 @@ class Game {
     else { this.step(dt); if (!this.replay) this.updateCamera(dt); }
     // world streaming always
     const L = this.train.loco.position, d = this.trainDir();
-    this.world.update(L.x + d.x * 45, L.z + d.z * 45, RADIUS, 6);
+    this.world.update(L.x + d.x * 45, L.z + d.z * 45, this.radius, 4);
     // day/night
     const want = this.night ? 1 : 0;
     if (Math.abs(this.nightK - want) > 0.001) { this.nightK += clamp(want - this.nightK, -dt * 1.5, dt * 1.5); this.applyLighting(this.nightK); }
@@ -787,7 +791,7 @@ class Game {
     }
     // hud
     this.fpsN++; this.fpsT += dt;
-    if (this.fpsT > 0.5) { this.fps = this.fpsN / this.fpsT; this.fpsN = 0; this.fpsT = 0; }
+    if (this.fpsT > 0.5) { this.fps = this.fpsN / this.fpsT; this.fpsN = 0; this.fpsT = 0; this.adapt(); }
     this.hudT -= dt;
     if (this.hudT < 0) {
       this.hudT = 0.12;
@@ -803,14 +807,30 @@ class Game {
     }
   }
 
+  // drop quality a notch at a time if the machine can't hold ~50fps
+  lowFrames = 0; quality = 2;
+  adapt() {
+    if (MANUAL || !this.started || this.replay) return;
+    this.lowFrames = this.fps < 48 ? this.lowFrames + 1 : 0;
+    if (this.lowFrames >= 6 && this.quality > 0) {
+      this.lowFrames = 0;
+      this.quality--;
+      if (this.quality === 1) { this.renderer.setPixelRatio(1); this.radius = Math.min(this.radius, 125); }
+      else { this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null as unknown as THREE.WebGLRenderTarget; this.radius = Math.min(this.radius, 105); }
+      (this.scene.fog as THREE.Fog).far = this.radius + 25;
+      console.info('[vce] quality ->', this.quality);
+    }
+  }
+  radius = RADIUS;
+
   boot() {
     // generate the starting area in one go
     const L = this.train.loco.position, d = this.trainDir();
     this.world.update(L.x + d.x * 45, L.z + d.z * 45, RADIUS, 1e9);
     document.getElementById('loading')!.textContent = 'World ready. ' + this.world.chunks.size + ' chunks streamed.';
     this.syncThrottle();
-    requestAnimationFrame(this.frame);
-    if (AUTOSTART) this.start();
+    if (!MANUAL) requestAnimationFrame(this.frame);
+    if (AUTOSTART) this.start(false);
   }
 }
 
@@ -826,10 +846,11 @@ game.boot();
   forceReplay: () => { forceReplayNext = true; },
   state: () => ({ s: game.train.s, speed: game.train.speed, chunks: game.world.chunks.size, targets: game.targets.length, kills: game.totalKills, score: game.score, replay: !!game.replay, replays: game.replays, debris: game.gore.debris.alive, blood: game.gore.blood.alive, voxels: game.world.voxelCount, fps: game.fps, x: game.train.loco.position.x, z: game.train.loco.position.z, biome: game.world.biomeAt(game.train.loco.position.x, game.train.loco.position.z) }),
   // advance the simulation deterministically (headless GPUs are slow)
-  advance: (sec: number, dt = 1 / 30) => { for (let t = 0; t < sec; t += dt) game.tick(dt); game.renderer.render(game.scene, game.camera); },
+  advance: (sec: number, dt = 1 / 30, render = false) => { for (let t = 0; t < sec; t += dt) game.tick(dt); if (!render) return 0; const t0 = performance.now(); game.renderer.render(game.scene, game.camera); return performance.now() - t0; },
   setCam: (m: CamMode) => game.setCam(m),
   night: (on: boolean) => { if (game.night !== on) game.toggleNight(); },
   drop: (type: TypeId, x: number, z: number) => game.dropAt(type, x, z),
-  teleport: (s: number) => { game.train.s = s; game.track.extendTo(s + 1000); game.train.place(s); game.lastLoco.copy(game.train.loco.position); game.setCam(game.camMode); },
+  teleport: (s: number) => { game.train.s = s; game.track.extendTo(s + 1000); game.train.place(s); const L = game.train.loco.position, d = game.trainDir(); game.world.update(L.x + d.x * 45, L.z + d.z * 45, RADIUS, 1e9); game.lastLoco.copy(L); game.setCam(game.camMode); },
+  findBiome: (b: string, from = 0) => { for (let s = from; s < from + 30000; s += 40) { game.track.extendTo(s + 1100); const tp = game.track.at(s); if (game.world.biomeAt(tp.x, tp.z) === b) { const tp2 = game.track.at(s + 60); if (game.world.biomeAt(tp2.x, tp2.z) === b) return s; } } return -1; },
 };
 void lin;

@@ -46,6 +46,7 @@ class Pool {
     this.size[i] = size; this.life[i] = life; this.max[i] = life; this.flag[i] = flag; this.drag[i] = drag;
     const c = lin(hex), k = 1 + (r() - 0.5) * jit;
     this.col[o] = c[0] * k; this.col[o + 1] = c[1] * k; this.col[o + 2] = c[2] * k;
+    this.mesh.instanceColor!.needsUpdate = true;
   }
   snapshot() {
     return { next: this.next, arr: [this.pos, this.vel, this.rot, this.av, this.size, this.life, this.max, this.flag, this.drag, this.col].map((a) => a.slice()) };
@@ -158,7 +159,7 @@ export class Gore {
     if (bloody || bleed === 'oil') {
       for (let i = 0; i < 10 * intensity; i++) {
         const x = mx + dirx * r() * 6 + (r() - 0.5) * 3, z = mz + dirz * r() * 6 + (r() - 0.5) * 3;
-        this.decal(x, this.ground(x, z) + 0.2 * +(this.isTrack(x, z)), z, palette[Math.floor(r() * palette.length)], 0.6 + r() * 1.2, r);
+        this.decal(x, this.ground(x, z) + 0.2 * +(this.isTrack(x, z)), z, palette[Math.floor(r() * palette.length)], 0.35 + r() * 0.7, r);
       }
     }
   }
@@ -196,7 +197,7 @@ export class Gore {
         if (y - half < gy) {
           y = gy + half;
           if (fl === 2) { // blood droplet: splat into a decal and die
-            if (this.allowDecals && (i & 1) === 0) this.decal(x, gy, z, 0, 0, Math.random);
+            if (this.allowDecals && (i & 3) === 0) this.decal(x, gy, z, 0, 0, Math.random);
             this.decalColorFrom(P, i, x, gy, z);
             P.life[i] = 0;
             continue;
@@ -204,7 +205,7 @@ export class Gore {
           if (fl === 4) { P.life[i] = 0; continue; }
           vy = -vy * 0.35; vx *= 0.6; vz *= 0.6;
           P.av[o] *= 0.6; P.av[o + 1] *= 0.6; P.av[o + 2] *= 0.6;
-          if (Math.abs(vy) < 1.2 && vx * vx + vz * vz < 0.5) { P.flag[i] = 9; vy = vx = vz = 0; if (fl === 1 && this.allowDecals && Math.random() < 0.5) this.decal(x, gy, z, 0x7a0008, P.size[i] * 2.5, Math.random); }
+          if (Math.abs(vy) < 1.2 && vx * vx + vz * vz < 0.5) { P.flag[i] = 9; vy = vx = vz = 0; if (fl === 1 && this.allowDecals && Math.random() < 0.3) this.decal(x, gy, z, 0x7a0008, P.size[i] * 1.6, Math.random); }
         }
         P.rot[o] += P.av[o] * dt; P.rot[o + 1] += P.av[o + 1] * dt; P.rot[o + 2] += P.av[o + 2] * dt;
         P.pos[o] = x; P.pos[o + 1] = y; P.pos[o + 2] = z;
@@ -240,10 +241,10 @@ export class Gore {
 
   private decalColorFrom(P: Pool, i: number, x: number, y: number, z: number) {
     // overwrite the last decal's color with this droplet's color (decal() above used a dummy)
-    if (!this.allowDecals || (i & 1) !== 0) return;
+    if (!this.allowDecals || (i & 3) !== 0) return;
     const k = (this.decalN - 1) % this.decalMax;
     const a = this.decals.instanceMatrix.array as Float32Array;
-    const sz = 0.25 + P.size[i] * 4 + Math.random() * 0.3;
+    const sz = 0.1 + P.size[i] * 2.2 + Math.random() * 0.2;
     writeMatrix(a, k * 16, x, y + 0.012, z, sz * (0.6 + Math.random()), 0.02, sz * (0.6 + Math.random()), Math.random() * 3);
     const col = this.decals.instanceColor!.array as Float32Array;
     col[k * 3] = P.col[i * 3] * 0.8; col[k * 3 + 1] = P.col[i * 3 + 1] * 0.8; col[k * 3 + 2] = P.col[i * 3 + 2] * 0.8;
