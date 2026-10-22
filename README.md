@@ -165,3 +165,10 @@ flowchart LR
 ## License
 
 MIT. Go run something over.
+
+
+---
+
+<p align="center"><a href="https://nixfred.com"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/nixfred-logo.svg"><img src="docs/brand/nixfred-logo-light.svg" width="160" alt="nixfred" /></picture></a></p>
+
+Live at **https://murder.nixfred.com/** (Cloudflare Worker + static assets; `murdertrain.nixfred.com` 301-redirects there). Deploy: `npm run build && npx wrangler deploy`.
