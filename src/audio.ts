@@ -12,7 +12,27 @@ export class Synth {
   musicMuted = false;
   pendingMusic: 'off' | 'cozy' | 'metal' = 'off';
 
+  private silentEl: HTMLAudioElement | null = null;
+
+  /** iOS: route web audio as media playback so the ring/silent switch does not mute it */
+  private iosPlayback() {
+    try { const nav = navigator as unknown as { audioSession?: { type: string } }; if (nav.audioSession) nav.audioSession.type = 'playback'; } catch { /* ignore */ }
+    if (!this.silentEl) {
+      // fallback for older iOS: a looping silent <audio> element puts the page in the media channel
+      const sr = 8000, n = 800, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+      const w = (o: number, t: string) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+      w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+      const el = document.createElement('audio');
+      el.src = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+      el.loop = true; el.setAttribute('playsinline', ''); el.setAttribute('x-webkit-airplay', 'deny'); el.preload = 'auto';
+      this.silentEl = el;
+    }
+    if (this.silentEl.paused) this.silentEl.play().catch(() => {});
+  }
+
   unlock() {
+    this.iosPlayback();
     if (!this.ctx) {
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AC();
@@ -31,7 +51,8 @@ export class Synth {
       // iOS: start a silent buffer inside the gesture so the output is really unlocked
       try { const b = this.ctx.createBufferSource(); b.buffer = this.ctx.createBuffer(1, 1, 22050); b.connect(this.ctx.destination); b.start(0); } catch { /* ignore */ }
     }
-    if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
+    // 'suspended' or iOS 'interrupted' (after a call, lock screen, app switch)
+    if ((this.ctx.state as string) !== 'running') this.ctx.resume().catch(() => {});
   }
 
   playMusic(mode: 'off' | 'cozy' | 'metal') {
