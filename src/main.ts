@@ -12,10 +12,12 @@ import { BOX, lin, modelGroup } from './voxels';
 import { mulberry32, clamp, lerp } from './rng';
 import * as M from './models';
 import { Intro, BloodFX } from './intro';
+import { IS_TOUCH, PERF } from './device';
+import { initTouch, installTouchGuards } from './touch';
 
 const params = new URLSearchParams(location.search);
 const SEED = +(params.get('seed') ?? 7);
-const RADIUS = +(params.get('radius') ?? 150);
+const RADIUS = +(params.get('radius') ?? PERF.radius);
 const AUTOSTART = params.has('autostart');
 const SKIP_INTRO = AUTOSTART || params.has('skipintro');
 const MANUAL = params.has('manual');
@@ -29,7 +31,7 @@ interface HitEvent { t: number; id: number; x: number; y: number; z: number; ry:
 
 class Smoke {
   mesh: THREE.InstancedMesh;
-  n = 360; next = 0;
+  n = PERF.smoke; next = 0;
   pos = new Float32Array(this.n * 3); vel = new Float32Array(this.n * 3); life = new Float32Array(this.n); size = new Float32Array(this.n); rot = new Float32Array(this.n);
   mat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.72, depthWrite: false });
   constructor() {
@@ -116,11 +118,13 @@ class Game {
   replayCooldown = 0;
   replays = 0;
   intro: Intro | null = null;
+  vw = 0; vh = 0; onResize = () => {};
+  touch: ReturnType<typeof initTouch> | null = null;
 
   constructor() {
     const canvas = document.getElementById('c') as HTMLCanvasElement;
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: PERF.antialias, powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(PERF.dpr);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -140,7 +144,7 @@ class Game {
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xffe2b8, 2.6);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(PERF.shadowMap, PERF.shadowMap);
     const sc = this.sun.shadow.camera;
     sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 260;
     this.sun.shadow.bias = -0.0004;
@@ -179,11 +183,21 @@ class Game {
     this.controls.update();
     this.applyLighting(0);
     this.bindUI();
-    window.addEventListener('resize', () => {
-      this.camera.aspect = window.innerWidth / window.innerHeight;
+    const resize = () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      if (w === this.vw && h === this.vh) return;
+      this.vw = w; this.vh = h;
+      this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+      this.renderer.setSize(w, h);
+    };
+    this.onResize = resize;
+    window.addEventListener('resize', resize);
+    // mobile browsers report the new size a beat after the rotation, so re-measure a few times
+    const settle = () => { resize(); setTimeout(resize, 120); setTimeout(resize, 400); setTimeout(resize, 900); };
+    window.addEventListener('orientationchange', settle);
+    window.visualViewport?.addEventListener('resize', settle);
+    document.addEventListener('fullscreenchange', settle);
   }
 
   // ------------------------------------------------------------ setup
@@ -233,9 +247,47 @@ class Game {
     canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; this.synth.unlock(); });
     canvas.addEventListener('pointerup', (e) => {
       if (this.intro?.active) { this.intro.click(); down = null; return; }
-      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 6 && this.started && !this.replay) this.clickDrop(e.clientX, e.clientY);
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < (IS_TOUCH ? 12 : 6) && this.started && !this.replay) this.clickDrop(e.clientX, e.clientY);
       down = null;
     });
+    if (IS_TOUCH) this.bindTouch();
+  }
+
+  bindTouch() {
+    installTouchGuards(() => this.synth.unlock());
+    const cams: CamMode[] = ['orbit', 'standing', 'chase'];
+    this.touch = initTouch({
+      getThrottle: () => this.train.throttle,
+      setThrottle: (v) => { this.train.throttle = clamp(v, 0, 10); this.syncThrottle(); if (!this.started && !this.intro) this.start(); },
+      brake: (on) => { this.train.braking = on; },
+      horn: () => { this.synth.unlock(); if (!this.started && !this.intro) { this.start(); return; } this.whistle(); },
+      cycleCam: () => { this.setCam(cams[(cams.indexOf(this.camMode) + 1) % 3]); return this.camMode; },
+      replay: () => this.replayButton(),
+      canReplay: () => this.events.length > 0 && !this.pendingReplay,
+      inReplay: () => !!this.replay,
+      toggleMute: () => { this.toggleMute(); return this.synth.muted; },
+      toggleMusic: () => { document.getElementById('musbtn')!.click(); return this.synth.musicMuted; },
+      toggleNight: () => { this.toggleNight(); return this.night; },
+      dropAhead: () => this.dropAhead(),
+      selectedName: () => TYPES[this.hud.selected].name,
+      unlockAudio: () => this.synth.unlock(),
+    });
+  }
+
+  /** R / REPLAY button: skip a running replay, or replay the most recent kill on demand */
+  replayButton() {
+    if (this.replay) { this.endReplay(); return; }
+    if (this.intro || this.pendingReplay || !this.events.length || !this.frames.length) return;
+    const ev = this.events[this.events.length - 1];
+    this.pendingReplay = { at: this.time, ev, cap: `${TYPES[ev.type].name.toUpperCase()} · ${Math.round(ev.speed * MPH)} MPH` };
+  }
+
+  /** drop the selected thing onto the line ahead of the train (easier than aiming a tap at speed) */
+  dropAhead() {
+    if (!this.started || this.replay || this.intro) return;
+    const tp = this.track.at(this.train.s + 28 + this.train.speed * 1.6);
+    const lat = (this.rng() - 0.5) * 6;
+    this.dropAt(this.hud.selected, tp.x - tp.dz * lat, tp.z + tp.dx * lat);
   }
 
   syncThrottle() {
@@ -833,6 +885,7 @@ class Game {
     const dt = Math.min(0.05, (now - (this.lastNow || now)) / 1000);
     this.lastNow = now;
     this.tick(dt);
+    this.touch?.sync();
     this.renderer.render(this.scene, this.camera);
   };
   lastNow = 0;
@@ -848,7 +901,7 @@ class Game {
     if (this.started && !this.intro) this.synth.playMusic(this.totalKills > 0 && this.time - this.lastKill < 45 ? 'metal' : 'cozy');
     // world streaming always
     const L = this.train.loco.position, d = this.trainDir();
-    this.world.update(L.x + d.x * 45, L.z + d.z * 45, this.radius, 4);
+    this.world.update(L.x + d.x * 45, L.z + d.z * 45, this.radius, PERF.streamMs);
     // day/night
     const want = this.night ? 1 : 0;
     if (Math.abs(this.nightK - want) > 0.001) { this.nightK += clamp(want - this.nightK, -dt * 1.5, dt * 1.5); this.applyLighting(this.nightK); }
@@ -887,8 +940,8 @@ class Game {
     if (this.lowFrames >= 6 && this.quality > 0) {
       this.lowFrames = 0;
       this.quality--;
-      if (this.quality === 1) { this.renderer.setPixelRatio(1); this.radius = Math.min(this.radius, 125); }
-      else { this.sun.shadow.mapSize.set(1024, 1024); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null as unknown as THREE.WebGLRenderTarget; this.radius = Math.min(this.radius, 105); }
+      if (this.quality === 1) { this.renderer.setPixelRatio(Math.min(PERF.dprLow, PERF.dpr)); this.radius = Math.min(this.radius, PERF.radiusLow); }
+      else { this.sun.shadow.mapSize.set(PERF.shadowLow, PERF.shadowLow); this.sun.shadow.map?.dispose(); this.sun.shadow.map = null as unknown as THREE.WebGLRenderTarget; this.radius = Math.min(this.radius, PERF.radiusMin); }
       (this.scene.fog as THREE.Fog).far = this.radius + 25;
       console.info('[vce] quality ->', this.quality);
     }

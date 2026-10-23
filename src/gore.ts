@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { BOX, MAT, GLOW_MAT, lin, writeMatrix, Vox } from './voxels';
 import { mulberry32, RNG } from './rng';
+import { PERF } from './device';
 
 export type Bleed = 'red' | 'green' | 'oil' | 'confetti' | 'snow' | 'splinter';
 
@@ -82,11 +83,11 @@ function scaleOnly(a: Float32Array, k: number, x: number, y: number, z: number, 
 }
 
 export class Gore {
-  debris = new Pool(14000, MAT, true);
-  blood = new Pool(20000, MAT, false);
-  glow = new Pool(3500, GLOW_MAT, false);
+  debris = new Pool(PERF.debris, MAT, PERF.debrisShadows);
+  blood = new Pool(PERF.blood, MAT, false);
+  glow = new Pool(PERF.glow, GLOW_MAT, false);
   decals: THREE.InstancedMesh;
-  private decalN = 0; private decalMax = 16000;
+  private decalN = 0; private decalMax = PERF.decals;
   private decalDirty = false;
   allowDecals = true;
   group = new THREE.Group();

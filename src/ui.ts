@@ -1,6 +1,7 @@
 // DOM HUD: stat cards, kill board, drop palette, popups, replay banner.
 import { Vox } from './voxels';
 import { TYPES, TYPE_IDS, TypeId, modelsFor } from './targets';
+import { IS_TOUCH } from './device';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -71,7 +72,7 @@ export class HUD {
   select(t: TypeId) {
     this.selected = t;
     document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('sel', (c as HTMLElement).dataset.t === t));
-    $('hint-text').textContent = `Click the terrain to drop a ${TYPES[t].name}. Drag to orbit, scroll to zoom.`;
+    $('hint-text').textContent = IS_TOUCH ? `Tap the ground to drop a ${TYPES[t].name}. Drag to orbit, pinch to zoom.` : `Click the terrain to drop a ${TYPES[t].name}. Drag to orbit, scroll to zoom.`;
     this.onSelect(t);
   }
 

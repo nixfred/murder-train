@@ -4,6 +4,7 @@
 //   splat -> hit! blood across the screen, record scratch, slow motion
 //   title -> smash cut to a blood-dripping MURDER TRAIN, heavy music, press any key
 import type { TypeId } from './targets';
+import { IS_TOUCH } from './device';
 
 export type IntroPhase = 'gate' | 'cozy' | 'splat' | 'title' | 'done';
 
@@ -92,7 +93,14 @@ export class Intro {
     $('hud-title').textContent = 'Voxel Train Yard';
     $('sub-pre').textContent = 'An HO-scale layout of rolling farmland, built from';
     $('sub-post').textContent = 'procedurally placed voxels. Zero assets.';
-    $('hint-text').textContent = 'Sit back and enjoy the ride. Drag to orbit, scroll to zoom.';
+    $('hint-text').textContent = IS_TOUCH ? 'Sit back and enjoy the ride. Drag to orbit, pinch to zoom.' : 'Sit back and enjoy the ride. Drag to orbit, scroll to zoom.';
+    if (IS_TOUCH) {
+      $('ts-press').textContent = 'Tap to start';
+      $('ts-keys').innerHTML = 'Slider: throttle &nbsp; HORN: lure victims &nbsp; SPAWN + DROP: drop stuff';
+      $('skipintro').textContent = 'Skip intro';
+      // the title card sits above the canvas, so it needs its own tap handler
+      $('titlescreen').addEventListener('pointerup', () => { this.h.synth.unlock(); this.click(); });
+    }
     $('cozy-go').onclick = (e) => { e.stopPropagation(); this.begin(); };
     $('skipintro').onclick = (e) => { e.stopPropagation(); this.finish(); };
     h.replayCooldown = 1e9;

@@ -84,6 +84,24 @@ Impatient? `Esc` or the **Skip intro** chip skips it. `?skipintro` in the URL ne
 | Click terrain | Drop the selected target |
 | Drag / scroll | Orbit / zoom (Orbit camera) |
 
+### On phones and tablets
+
+Touch devices get their own overlay (iOS Safari and Android Chrome, portrait or landscape):
+
+| Control | Action |
+|---|---|
+| **Throttle** slider (left) | Tap or drag to set throttle 0 to 10 |
+| **Brake** (left) | Hold to brake |
+| **Horn** (right) | Whistle |
+| **Cam** (right) | Cycle camera |
+| **Drop** (right) | Drop the selected target on the track ahead |
+| **Spawn** (right) | Open the Drop Zone menu |
+| Top row | Replay last kill / skip, mute, music, day / night, fullscreen (Android) |
+| Tap terrain | Drop the selected target |
+| Drag / pinch | Orbit / zoom |
+
+Phones run a lighter preset (capped pixel ratio, smaller world radius, smaller particle pools and shadow maps). Add `?touch` or `?desktop` to the URL to force either layout.
+
 ## Run it
 
 ```bash

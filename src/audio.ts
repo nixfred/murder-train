@@ -28,8 +28,10 @@ export class Synth {
       this.music = new Music(this.ctx, this.master, this.noise);
       this.music.setVolume(this.musicMuted ? 0 : this.musicVolume);
       this.music.play(this.pendingMusic);
+      // iOS: start a silent buffer inside the gesture so the output is really unlocked
+      try { const b = this.ctx.createBufferSource(); b.buffer = this.ctx.createBuffer(1, 1, 22050); b.connect(this.ctx.destination); b.start(0); } catch { /* ignore */ }
     }
-    if (this.ctx.state === 'suspended') this.ctx.resume();
+    if (this.ctx.state !== 'running') this.ctx.resume().catch(() => {});
   }
 
   playMusic(mode: 'off' | 'cozy' | 'metal') {
