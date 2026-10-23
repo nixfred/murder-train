@@ -105,6 +105,9 @@ export class Intro {
     $('skipintro').onclick = (e) => { e.stopPropagation(); this.finish(); };
     h.replayCooldown = 1e9;
     h.train.throttle = 2.5; h.syncThrottle();
+    // no "Start the demo" button: the ride rolls on its own (music kicks in on the first tap or key)
+    $('cozy-go').style.display = 'none';
+    setTimeout(() => this.begin(), 600);
   }
 
   get active() { return this.phase !== 'done'; }
@@ -147,6 +150,8 @@ export class Intro {
       if (this.phase === 'cozy' && this.t > 14 && this.victim >= 0) this.victim = this.h.spawnOnTrack('cow', 14, 0, 'stand'); // fallback
     } else if (this.phase === 'splat' && this.t > 0.45) {
       this.toTitle();
+    } else if (this.phase === 'title' && this.t > 4) {
+      this.finish(); // straight into the game, no waiting on a press
     }
   }
 
